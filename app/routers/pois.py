@@ -1,10 +1,10 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Cookie
 from sqlalchemy.orm import Session
 from typing import Optional
 
-from app import crud, models, schemas
-from app.database import get_db
-from app.routers.auth import get_optional_current_user
+import crud, models, schemas
+from database import get_db
+from routers.auth import get_optional_current_user
 
 router = APIRouter(
     prefix="/pois",
@@ -12,10 +12,11 @@ router = APIRouter(
 )
 
 @router.get("/{poi_id}", response_model=schemas.POIDetail)
-def get_poi_detail(
+async def get_poi_detail(
     poi_id: int,
     db: Session = Depends(get_db),
-    current_user: Optional[models.User] = Depends(get_optional_current_user)
+    current_user: Optional[models.User] = Depends(get_optional_current_user),
+    visitor_id: Optional[str] = Cookie(None)
 ):
     """
     获取兴趣点详情
@@ -27,7 +28,13 @@ def get_poi_detail(
         raise HTTPException(status_code=404, detail="兴趣点不存在")
     
     # 检查收藏状态
-    user_id = None if current_user is None else current_user.id
-    poi.is_favorite = crud.check_favorite(db, user_id=user_id, item_id=poi.id, item_type="poi")
+    user_id = current_user.id if current_user else None
+    poi.is_favorite = crud.check_favorite(
+        db, 
+        item_id=poi.id, 
+        item_type="poi",
+        user_id=user_id,
+        visitor_id=visitor_id if not user_id else None
+    )
     
-    return poi 
+    return poi

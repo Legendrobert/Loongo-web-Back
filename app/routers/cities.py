@@ -1,10 +1,10 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Cookie
 from sqlalchemy.orm import Session
 from typing import List, Optional
 
-from app import crud, models, schemas
-from app.database import get_db
-from app.routers.auth import get_optional_current_user
+import crud, models, schemas
+from database import get_db
+from routers.auth import get_optional_current_user
 
 router = APIRouter(
     prefix="/cities",
@@ -12,12 +12,13 @@ router = APIRouter(
 )
 
 @router.get("/", response_model=List[schemas.CityList])
-def get_cities_by_region(
+async def get_cities_by_region(
     region: Optional[str] = None,
     skip: int = 0,
     limit: int = 100,
     db: Session = Depends(get_db),
-    current_user: Optional[models.User] = Depends(get_optional_current_user)
+    current_user: Optional[models.User] = Depends(get_optional_current_user),
+    visitor_id: Optional[str] = Cookie(None)
 ):
     """
     获取城市列表
@@ -27,17 +28,20 @@ def get_cities_by_region(
     cities = crud.get_cities(db, region=region, skip=skip, limit=limit)
     
     # 检查收藏状态
-    user_id = None if current_user is None else current_user.id
+    user_id = current_user.id if current_user else None
     for city in cities:
-        city.is_favorite = crud.check_favorite(db, user_id=user_id, item_id=city.id, item_type="city")
+        city.is_favorite = crud.check_favorite(
+            db, 
+            item_id=city.id, 
+            item_type="city",
+            user_id=user_id,
+            visitor_id=visitor_id if not user_id else None
+        )
     
     return cities
 
 @router.get("/map", response_model=List[schemas.CityMap])
-def get_cities_map_data(
-    db: Session = Depends(get_db),
-    current_user: Optional[models.User] = Depends(get_optional_current_user)
-):
+async def get_cities_map_data(db: Session = Depends(get_db)):
     """
     获取地图模式城市数据
     
@@ -46,10 +50,11 @@ def get_cities_map_data(
     return crud.get_cities_map_data(db)
 
 @router.get("/search", response_model=List[schemas.CityList])
-def search_cities(
+async def search_cities(
     query: str,
     db: Session = Depends(get_db),
-    current_user: Optional[models.User] = Depends(get_optional_current_user)
+    current_user: Optional[models.User] = Depends(get_optional_current_user),
+    visitor_id: Optional[str] = Cookie(None)
 ):
     """
     搜索城市
@@ -59,82 +64,136 @@ def search_cities(
     cities = crud.search_cities(db, query=query)
     
     # 检查收藏状态
-    user_id = None if current_user is None else current_user.id
+    user_id = current_user.id if current_user else None
     for city in cities:
-        city.is_favorite = crud.check_favorite(db, user_id=user_id, item_id=city.id, item_type="city")
+        city.is_favorite = crud.check_favorite(
+            db, 
+            item_id=city.id, 
+            item_type="city",
+            user_id=user_id,
+            visitor_id=visitor_id if not user_id else None
+        )
     
     return cities
 
 @router.get("/{city_id}", response_model=schemas.CityDetail)
-def get_city_detail(
+async def get_city_detail(
     city_id: int,
     db: Session = Depends(get_db),
-    current_user: Optional[models.User] = Depends(get_optional_current_user)
+    current_user: Optional[models.User] = Depends(get_optional_current_user),
+    visitor_id: Optional[str] = Cookie(None)
 ):
     """
     获取城市详情
     
-    返回城市图片及视频、城市简介、当前温度、适宜季节、推荐旅游项目、美食、住宿、社媒视频和标签等
+    返回城市图片及视频、城市简介、当前温度、适宜季节、推荐旅游项目、美食、住宿等
     """
+    # 获取城市信息
     city = crud.get_city(db, city_id=city_id)
     if city is None:
         raise HTTPException(status_code=404, detail="城市不存在")
     
-    # 检查收藏状态
-    user_id = None if current_user is None else current_user.id
-    city.is_favorite = crud.check_favorite(db, user_id=user_id, item_id=city.id, item_type="city")
+    # 检查城市收藏状态
+    user_id = current_user.id if current_user else None
+    city.is_favorite = crud.check_favorite(
+        db, 
+        item_id=city.id, 
+        item_type="city",
+        user_id=user_id,
+        visitor_id=visitor_id if not user_id else None
+    )
+    
+    # 检查POI收藏状态
+    for poi in city.pois:
+        poi.is_favorite = crud.check_favorite(
+            db, 
+            item_id=poi.id, 
+            item_type="poi",
+            user_id=user_id,
+            visitor_id=visitor_id if not user_id else None
+        )
     
     # 获取相关城市推荐
-    city.recommended_cities = crud.get_recommended_cities(db, city_id=city_id)
+    recommended_cities = crud.get_recommended_cities(db, city_id=city_id)
+    
+    # 检查推荐城市收藏状态
+    for rec_city in recommended_cities:
+        rec_city.is_favorite = crud.check_favorite(
+            db, 
+            item_id=rec_city.id, 
+            item_type="city",
+            user_id=user_id,
+            visitor_id=visitor_id if not user_id else None
+        )
+    
+    city.recommended_cities = recommended_cities
     
     return city
 
 @router.get("/{city_id}/map", response_model=List[schemas.POIMap])
-def get_city_map_data(
+async def get_city_map_data(
     city_id: int,
     poi_type: Optional[str] = None,
     db: Session = Depends(get_db),
-    current_user: Optional[models.User] = Depends(get_optional_current_user)
+    current_user: Optional[models.User] = Depends(get_optional_current_user),
+    visitor_id: Optional[str] = Cookie(None)
 ):
     """
     获取城市地图模式数据
     
     返回城市内的点位信息，用于地图模式展示
     """
+    # 检查城市是否存在
     city = crud.get_city(db, city_id=city_id)
     if city is None:
         raise HTTPException(status_code=404, detail="城市不存在")
     
+    # 获取城市POI数据
     pois = crud.get_city_pois_map_data(db, city_id=city_id, poi_type=poi_type)
     
     # 检查收藏状态
-    user_id = None if current_user is None else current_user.id
+    user_id = current_user.id if current_user else None
     for poi in pois:
-        poi.is_favorite = crud.check_favorite(db, user_id=user_id, item_id=poi.id, item_type="poi")
+        poi.is_favorite = crud.check_favorite(
+            db, 
+            item_id=poi.id, 
+            item_type="poi",
+            user_id=user_id,
+            visitor_id=visitor_id if not user_id else None
+        )
     
     return pois
 
 @router.get("/{city_id}/search", response_model=List[schemas.POIBase])
-def search_city_pois(
+async def search_city_pois(
     city_id: int,
     query: str,
     db: Session = Depends(get_db),
-    current_user: Optional[models.User] = Depends(get_optional_current_user)
+    current_user: Optional[models.User] = Depends(get_optional_current_user),
+    visitor_id: Optional[str] = Cookie(None)
 ):
     """
     搜索城市内点位
     
     在指定城市内搜索点位信息
     """
+    # 检查城市是否存在
     city = crud.get_city(db, city_id=city_id)
     if city is None:
         raise HTTPException(status_code=404, detail="城市不存在")
     
+    # 搜索城市POI
     pois = crud.search_city_pois(db, city_id=city_id, query=query)
     
     # 检查收藏状态
-    user_id = None if current_user is None else current_user.id
+    user_id = current_user.id if current_user else None
     for poi in pois:
-        poi.is_favorite = crud.check_favorite(db, user_id=user_id, item_id=poi.id, item_type="poi")
+        poi.is_favorite = crud.check_favorite(
+            db, 
+            item_id=poi.id, 
+            item_type="poi",
+            user_id=user_id,
+            visitor_id=visitor_id if not user_id else None
+        )
     
-    return pois 
+    return pois

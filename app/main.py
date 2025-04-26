@@ -2,18 +2,24 @@ from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 
-from app import models, schemas, crud
-from app.database import engine, get_db
-from app.routers import auth, cities, favorites, pois, itinerary
+import models
+from database import engine, get_db
+from config import settings
+from routers import auth, cities, favorites, pois, itinerary
 
+# 创建数据库表
 models.Base.metadata.create_all(bind=engine)
 
-app = FastAPI(title="Loongo Web APP API")
+# 创建FastAPI应用实例
+app = FastAPI(
+    title=settings.APP_NAME,
+    debug=settings.DEBUG
+)
 
 # 添加CORS中间件
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=settings.CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -28,4 +34,14 @@ app.include_router(itinerary.router)
 
 @app.get("/")
 def read_root():
-    return {"message": "Loongo APP Web API"} 
+    """API根路径的欢迎信息"""
+    return {"message": settings.APP_NAME} 
+
+# 为新系统添加健康检查端点
+@app.get("/health")
+def health_check():
+    """系统健康检查端点"""
+    return {
+        "status": "healthy",
+        "version": "1.0.0"
+    }

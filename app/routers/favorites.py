@@ -1,11 +1,11 @@
-from fastapi import APIRouter, Depends, HTTPException, Cookie
+from fastapi import APIRouter, Depends, HTTPException, Cookie, Response
 from sqlalchemy.orm import Session
 from typing import List, Optional
 import uuid
 
-from app import crud, models, schemas
-from app.database import get_db
-from app.routers.auth import get_optional_current_user
+import crud, models, schemas
+from database import get_db
+from routers.auth import get_optional_current_user
 
 router = APIRouter(
     prefix="/favorites",
@@ -13,8 +13,9 @@ router = APIRouter(
 )
 
 @router.post("/city/{city_id}", response_model=schemas.FavoriteResponse)
-def toggle_favorite_city(
+async def toggle_favorite_city(
     city_id: int,
+    response: Response,
     db: Session = Depends(get_db),
     current_user: Optional[models.User] = Depends(get_optional_current_user),
     visitor_id: Optional[str] = Cookie(None)
@@ -44,13 +45,16 @@ def toggle_favorite_city(
         # 游客模式
         if not visitor_id:
             visitor_id = str(uuid.uuid4())
+            # 设置cookie
+            response.set_cookie(key="visitor_id", value=visitor_id, httponly=True, max_age=60*60*24*30)  # 30天
         
         is_favorite = crud.toggle_favorite(db, visitor_id=visitor_id, item_id=city_id, item_type="city")
         return {"is_favorite": is_favorite, "visitor_id": visitor_id}
 
 @router.post("/poi/{poi_id}", response_model=schemas.FavoriteResponse)
-def toggle_favorite_poi(
+async def toggle_favorite_poi(
     poi_id: int,
+    response: Response,
     db: Session = Depends(get_db),
     current_user: Optional[models.User] = Depends(get_optional_current_user),
     visitor_id: Optional[str] = Cookie(None)
@@ -80,12 +84,14 @@ def toggle_favorite_poi(
         # 游客模式
         if not visitor_id:
             visitor_id = str(uuid.uuid4())
+            # 设置cookie
+            response.set_cookie(key="visitor_id", value=visitor_id, httponly=True, max_age=60*60*24*30)  # 30天
         
         is_favorite = crud.toggle_favorite(db, visitor_id=visitor_id, item_id=poi_id, item_type="poi")
         return {"is_favorite": is_favorite, "visitor_id": visitor_id}
 
 @router.get("/", response_model=List[schemas.FavoriteCity])
-def get_favorites(
+async def get_favorites(
     db: Session = Depends(get_db),
     current_user: Optional[models.User] = Depends(get_optional_current_user),
     visitor_id: Optional[str] = Cookie(None)
@@ -110,4 +116,4 @@ def get_favorites(
         return crud.get_visitor_favorites(db, visitor_id=visitor_id)
     else:
         # 没有游客ID
-        return [] 
+        return []

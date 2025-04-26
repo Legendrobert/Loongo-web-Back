@@ -1,12 +1,11 @@
 from sqlalchemy.orm import Session
 from sqlalchemy import or_, and_
 from datetime import datetime, timedelta
-from jose import jwt
 from typing import Optional, List
 import uuid
 
-from app.utils.security import get_password_hash, verify_password
-from app import models, schemas
+from utils.security import get_password_hash, verify_password, create_access_token
+import models, schemas
 
 # 用户相关操作
 def get_user(db: Session, user_id: int):
@@ -38,16 +37,6 @@ def authenticate_user(db: Session, username: str, password: str):
         return False
     return user
 
-def create_access_token(data: dict, secret_key: str = "YOUR_SECRET_KEY", algorithm: str = "HS256", expires_delta: Optional[timedelta] = None):
-    to_encode = data.copy()
-    if expires_delta:
-        expire = datetime.utcnow() + expires_delta
-    else:
-        expire = datetime.utcnow() + timedelta(minutes=15)
-    to_encode.update({"exp": expire})
-    encoded_jwt = jwt.encode(to_encode, secret_key, algorithm=algorithm)
-    return encoded_jwt
-
 # 城市相关操作
 def get_cities(db: Session, region: Optional[str] = None, skip: int = 0, limit: int = 100):
     query = db.query(models.City)
@@ -75,7 +64,7 @@ def get_recommended_cities(db: Session, city_id: int, limit: int = 5):
     if not city:
         return []
     
-    # 获取相关城市（这里简化为获取相同区域的其他城市）
+    # 获取相同区域的其他城市
     return db.query(models.City).filter(
         and_(
             models.City.region == city.region,
@@ -106,85 +95,70 @@ def search_city_pois(db: Session, city_id: int, query: str):
     ).all()
 
 # 收藏相关操作
-def check_favorite(db: Session, user_id: Optional[int], item_id: int, item_type: str, visitor_id: Optional[str] = None):
+def check_favorite(db: Session, item_id: int, item_type: str, user_id: Optional[int] = None, visitor_id: Optional[str] = None):
+    """检查是否已收藏项目"""
+    query = db.query(models.Favorite).filter(
+        and_(
+            models.Favorite.item_id == item_id,
+            models.Favorite.item_type == item_type
+        )
+    )
+    
     if user_id:
-        favorite = db.query(models.Favorite).filter(
-            and_(
-                models.Favorite.user_id == user_id,
-                models.Favorite.item_id == item_id,
-                models.Favorite.item_type == item_type
-            )
-        ).first()
-        return favorite is not None
+        query = query.filter(models.Favorite.user_id == user_id)
     elif visitor_id:
-        # 游客收藏存储在另一个表或使用visitor_id字段
-        favorite = db.query(models.Favorite).filter(
-            and_(
-                models.Favorite.visitor_id == visitor_id,
-                models.Favorite.item_id == item_id,
-                models.Favorite.item_type == item_type
-            )
-        ).first()
-        return favorite is not None
-    return False
+        query = query.filter(models.Favorite.visitor_id == visitor_id)
+    else:
+        return False
+        
+    return query.first() is not None
 
 def toggle_favorite(db: Session, item_id: int, item_type: str, user_id: Optional[int] = None, visitor_id: Optional[str] = None):
-    if user_id:
-        # 用户已登录
-        favorite = db.query(models.Favorite).filter(
-            and_(
-                models.Favorite.user_id == user_id,
-                models.Favorite.item_id == item_id,
-                models.Favorite.item_type == item_type
-            )
-        ).first()
+    """切换收藏状态"""
+    # 确认用户ID或游客ID至少有一个
+    if not user_id and not visitor_id:
+        return False
         
-        if favorite:
-            # 取消收藏
-            db.delete(favorite)
-            db.commit()
-            return False
-        else:
-            # 添加收藏
-            db_favorite = models.Favorite(
-                user_id=user_id,
-                item_id=item_id,
-                item_type=item_type
-            )
-            db.add(db_favorite)
-            db.commit()
-            return True
-    elif visitor_id:
-        # 游客收藏
-        favorite = db.query(models.Favorite).filter(
-            and_(
-                models.Favorite.visitor_id == visitor_id,
-                models.Favorite.item_id == item_id,
-                models.Favorite.item_type == item_type
-            )
-        ).first()
-        
-        if favorite:
-            # 取消收藏
-            db.delete(favorite)
-            db.commit()
-            return False
-        else:
-            # 添加收藏
-            db_favorite = models.Favorite(
-                visitor_id=visitor_id,
-                item_id=item_id,
-                item_type=item_type
-            )
-            db.add(db_favorite)
-            db.commit()
-            return True
+    # 构建查询条件
+    filter_conditions = [
+        models.Favorite.item_id == item_id,
+        models.Favorite.item_type == item_type
+    ]
     
-    return False
+    if user_id:
+        filter_conditions.append(models.Favorite.user_id == user_id)
+    elif visitor_id:
+        filter_conditions.append(models.Favorite.visitor_id == visitor_id)
+    
+    # 查找已有收藏
+    favorite = db.query(models.Favorite).filter(and_(*filter_conditions)).first()
+    
+    if favorite:
+        # 取消收藏
+        db.delete(favorite)
+        db.commit()
+        return False
+    else:
+        # 添加收藏
+        new_favorite = models.Favorite(
+            user_id=user_id,
+            visitor_id=visitor_id,
+            item_id=item_id,
+            item_type=item_type
+        )
+        db.add(new_favorite)
+        db.commit()
+        return True
 
 def merge_visitor_favorites(db: Session, user_id: int, visitor_id: str):
+    """合并游客收藏到用户账户"""
+    if not visitor_id:
+        return
+        
     # 获取游客的所有收藏
-    visitor_favorites = db.query(models.Favorite).filter(models.Favorite.visitor_id == visitor_id).all()
+    visitor_favorites = db.query(models.Favorite).filter(
+        models.Favorite.visitor_id == visitor_id
+    ).all()
     
     for favorite in visitor_favorites:
         # 检查用户是否已经收藏了这个项目
@@ -203,36 +177,52 @@ def merge_visitor_favorites(db: Session, user_id: int, visitor_id: str):
     
     db.commit()
 
+def get_favorite_items(db: Session, item_type: str, user_id: Optional[int] = None, visitor_id: Optional[str] = None):
+    """获取收藏的项目ID列表"""
+    query = db.query(models.Favorite.item_id).filter(models.Favorite.item_type == item_type)
+    
+    if user_id:
+        query = query.filter(models.Favorite.user_id == user_id)
+    elif visitor_id:
+        query = query.filter(models.Favorite.visitor_id == visitor_id)
+    else:
+        return []
+        
+    return [item[0] for item in query.all()]
+
 def get_user_favorites(db: Session, user_id: int):
-    # 获取用户收藏的城市
-    city_favorites = db.query(models.Favorite).filter(
-        and_(
-            models.Favorite.user_id == user_id,
-            models.Favorite.item_type == "city"
-        )
-    ).all()
+    """获取用户收藏的城市和POI"""
+    # 获取用户收藏的城市ID列表
+    favorite_city_ids = get_favorite_items(db, item_type="city", user_id=user_id)
     
     favorite_cities = []
-    for favorite in city_favorites:
-        city = db.query(models.City).filter(models.City.id == favorite.item_id).first()
+    for city_id in favorite_city_ids:
+        city = db.query(models.City).filter(models.City.id == city_id).first()
         if city:
-            # 获取该城市下收藏的POI
-            poi_favorites = db.query(models.Favorite).filter(
+            # 获取该城市下收藏的POI ID列表
+            favorite_poi_ids = db.query(models.Favorite.item_id).filter(
                 and_(
                     models.Favorite.user_id == user_id,
                     models.Favorite.item_type == "poi"
                 )
             ).join(
                 models.POI, 
-                and_(models.Favorite.item_id == models.POI.id, models.POI.city_id == city.id)
+                and_(
+                    models.Favorite.item_id == models.POI.id, 
+                    models.POI.city_id == city.id
+                )
             ).all()
             
-            pois = []
-            for poi_favorite in poi_favorites:
-                poi = db.query(models.POI).filter(models.POI.id == poi_favorite.item_id).first()
-                if poi:
-                    pois.append(poi)
+            favorite_poi_ids = [item[0] for item in favorite_poi_ids]
             
+            # 获取POI详情
+            pois = db.query(models.POI).filter(models.POI.id.in_(favorite_poi_ids)).all()
+            
+            # 设置为收藏状态
+            for poi in pois:
+                poi.is_favorite = True
+                
+            # 添加到城市对象
             city.pois = pois
             city.poi_count = len(pois)
             favorite_cities.append(city)
@@ -240,37 +230,43 @@ def get_user_favorites(db: Session, user_id: int):
     return favorite_cities
 
 def get_visitor_favorites(db: Session, visitor_id: str):
-    # 获取游客收藏的城市
-    city_favorites = db.query(models.Favorite).filter(
-        and_(
-            models.Favorite.visitor_id == visitor_id,
-            models.Favorite.item_type == "city"
-        )
-    ).all()
+    """获取游客收藏的城市和POI"""
+    if not visitor_id:
+        return []
+        
+    # 获取游客收藏的城市ID列表
+    favorite_city_ids = get_favorite_items(db, item_type="city", visitor_id=visitor_id)
     
     favorite_cities = []
-    for favorite in city_favorites:
-        city = db.query(models.City).filter(models.City.id == favorite.item_id).first()
+    for city_id in favorite_city_ids:
+        city = db.query(models.City).filter(models.City.id == city_id).first()
         if city:
-            # 获取该城市下收藏的POI
-            poi_favorites = db.query(models.Favorite).filter(
+            # 获取该城市下收藏的POI ID列表
+            favorite_poi_ids = db.query(models.Favorite.item_id).filter(
                 and_(
                     models.Favorite.visitor_id == visitor_id,
                     models.Favorite.item_type == "poi"
                 )
             ).join(
                 models.POI, 
-                and_(models.Favorite.item_id == models.POI.id, models.POI.city_id == city.id)
+                and_(
+                    models.Favorite.item_id == models.POI.id, 
+                    models.POI.city_id == city.id
+                )
             ).all()
             
-            pois = []
-            for poi_favorite in poi_favorites:
-                poi = db.query(models.POI).filter(models.POI.id == poi_favorite.item_id).first()
-                if poi:
-                    pois.append(poi)
+            favorite_poi_ids = [item[0] for item in favorite_poi_ids]
             
+            # 获取POI详情
+            pois = db.query(models.POI).filter(models.POI.id.in_(favorite_poi_ids)).all()
+            
+            # 设置为收藏状态
+            for poi in pois:
+                poi.is_favorite = True
+                
+            # 添加到城市对象
             city.pois = pois
             city.poi_count = len(pois)
             favorite_cities.append(city)
     
-    return favorite_cities 
+    return favorite_cities

@@ -1,5 +1,5 @@
-from pydantic import BaseModel, EmailStr
-from typing import List, Optional
+from pydantic import BaseModel, EmailStr, Field
+from typing import List, Optional, Union
 from datetime import datetime
 
 # 用户相关的模式
@@ -13,17 +13,19 @@ class UserCreate(UserBase):
 class User(UserBase):
     id: int
     is_active: bool
+    created_at: datetime
 
-    class Config:
-        orm_mode = True
+    model_config = {"from_attributes": True}
 
 # 认证相关模式
 class Token(BaseModel):
     access_token: str
-    token_type: str
+    token_type: str = "bearer"
+    expires_in: int = Field(..., description="Token expiration time in seconds")
 
 class TokenData(BaseModel):
     username: Optional[str] = None
+    exp: Optional[datetime] = None
 
 # 城市图片模式
 class CityImageBase(BaseModel):
@@ -33,8 +35,7 @@ class CityImage(CityImageBase):
     id: int
     city_id: int
 
-    class Config:
-        orm_mode = True
+    model_config = {"from_attributes": True}
 
 # 城市视频模式
 class CityVideoBase(BaseModel):
@@ -44,8 +45,7 @@ class CityVideo(CityVideoBase):
     id: int
     city_id: int
 
-    class Config:
-        orm_mode = True
+    model_config = {"from_attributes": True}
 
 # 城市列表模式
 class CityList(BaseModel):
@@ -53,12 +53,11 @@ class CityList(BaseModel):
     name: str
     province: str
     region: str
-    images: List[CityImage]
-    videos: List[CityVideo]
+    images: List[CityImage] = []
+    videos: List[CityVideo] = []
     is_favorite: bool = False
 
-    class Config:
-        orm_mode = True
+    model_config = {"from_attributes": True}
 
 # 城市地图模式
 class CityMap(BaseModel):
@@ -67,8 +66,7 @@ class CityMap(BaseModel):
     latitude: float
     longitude: float
     
-    class Config:
-        orm_mode = True
+    model_config = {"from_attributes": True}
 
 # POI图片模式
 class POIImageBase(BaseModel):
@@ -78,8 +76,7 @@ class POIImage(POIImageBase):
     id: int
     poi_id: int
 
-    class Config:
-        orm_mode = True
+    model_config = {"from_attributes": True}
 
 # POI标签模式
 class POITagBase(BaseModel):
@@ -89,8 +86,7 @@ class POITag(POITagBase):
     id: int
     poi_id: int
 
-    class Config:
-        orm_mode = True
+    model_config = {"from_attributes": True}
 
 # POI基础模式
 class POIBase(BaseModel):
@@ -101,11 +97,10 @@ class POIBase(BaseModel):
     address: str
     latitude: float
     longitude: float
-    images: List[POIImage]
+    images: List[POIImage] = []
     is_favorite: bool = False
 
-    class Config:
-        orm_mode = True
+    model_config = {"from_attributes": True}
 
 # POI地图模式
 class POIMap(BaseModel):
@@ -116,16 +111,14 @@ class POIMap(BaseModel):
     longitude: float
     is_favorite: bool = False
 
-    class Config:
-        orm_mode = True
+    model_config = {"from_attributes": True}
 
 # POI详情模式
 class POIDetail(POIBase):
-    tags: List[POITag]
+    tags: List[POITag] = []
     city_id: int
 
-    class Config:
-        orm_mode = True
+    model_config = {"from_attributes": True}
 
 # 城市详情模式
 class CityDetail(CityList):
@@ -137,8 +130,7 @@ class CityDetail(CityList):
     pois: List[POIBase] = []
     recommended_cities: List[CityList] = []
 
-    class Config:
-        orm_mode = True
+    model_config = {"from_attributes": True}
 
 # 收藏相关模式
 class FavoriteResponse(BaseModel):
@@ -147,17 +139,15 @@ class FavoriteResponse(BaseModel):
 
 # 收藏的POI模式
 class FavoritePOI(POIBase):
-    class Config:
-        orm_mode = True
+    model_config = {"from_attributes": True}
 
 # 收藏的城市模式
 class FavoriteCity(BaseModel):
     id: int
     name: str
     province: str
-    images: List[CityImage]
+    images: List[CityImage] = []
     pois: List[FavoritePOI] = []
     poi_count: int = 0
 
-    class Config:
-        orm_mode = True 
+    model_config = {"from_attributes": True}
