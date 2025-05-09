@@ -6,10 +6,10 @@ from jose import JWTError, jwt
 from typing import Optional
 import uuid
 
-from config import settings
-from database import get_db
-from utils.security import create_access_token
-import models, schemas, crud
+from app.config import settings
+from app.database import get_db
+from app.utils.security import create_access_token
+from app import models, schemas, crud
 
 router = APIRouter(
     prefix="/auth",
@@ -64,7 +64,7 @@ async def get_optional_current_user(token: Optional[str] = Depends(oauth2_scheme
     except HTTPException:
         return None
 
-@router.post("/register", response_model=schemas.User)
+@router.post("/register")
 async def register_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
     """
     注册新用户
@@ -88,7 +88,19 @@ async def register_user(user: schemas.UserCreate, db: Session = Depends(get_db))
         )
     
     # 创建新用户
-    return crud.create_user(db=db, user=user)
+    new_user = crud.create_user(db=db, user=user)
+    
+    # 返回自定义格式的响应
+    return {
+        "data": {
+            "id": new_user.id,
+            "username": new_user.username,
+            "email": new_user.email,
+            "is_active": new_user.is_active,
+            "created_at": new_user.created_at
+        },
+        "code": 200
+    }
 
 @router.post("/token", response_model=schemas.Token)
 async def login_for_access_token(

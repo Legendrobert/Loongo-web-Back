@@ -2,7 +2,7 @@ from passlib.context import CryptContext
 from jose import jwt
 from datetime import datetime, timedelta
 from typing import Optional
-from config import settings
+from app.config import settings
 
 # 创建密码上下文
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")

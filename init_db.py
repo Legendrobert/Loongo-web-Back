@@ -5,10 +5,13 @@
 # models.Base.metadata.create_all(bind=engine) 
 
 
-from app.database import SessionLocal
+from app.database import engine, SessionLocal
 from app import models
 from app.utils.security import get_password_hash
 from sqlalchemy.exc import IntegrityError
+
+# 创建所有表
+models.Base.metadata.create_all(bind=engine)
 
 # 创建数据库会话
 db = SessionLocal()

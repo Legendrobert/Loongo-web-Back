@@ -4,8 +4,8 @@ from datetime import datetime, timedelta
 from typing import Optional, List
 import uuid
 
-from utils.security import get_password_hash, verify_password, create_access_token
-import models, schemas
+from app.utils.security import get_password_hash, verify_password, create_access_token
+from app import models, schemas
 
 # 用户相关操作
 def get_user(db: Session, user_id: int):

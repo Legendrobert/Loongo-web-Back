@@ -1,7 +1,7 @@
 from sqlalchemy import Boolean, Column, ForeignKey, Integer, String, Float, Table, Text, DateTime
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
-from database import Base
+from app.database import Base
 
 # 用户模型
 class User(Base):

@@ -2,9 +2,9 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Cookie
 from sqlalchemy.orm import Session
 from typing import List, Optional
 
-import crud, models, schemas
-from database import get_db
-from routers.auth import get_optional_current_user
+from app import crud, models, schemas
+from app.database import get_db
+from app.routers.auth import get_optional_current_user
 
 router = APIRouter(
     prefix="/cities",

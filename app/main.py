@@ -2,10 +2,10 @@ from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 
-import models
-from database import engine, get_db
-from config import settings
-from routers import auth, cities, favorites, pois, itinerary
+from app import models
+from app.database import engine, get_db
+from app.config import settings
+from app.routers import auth, cities, favorites, pois, itinerary
 
 # 创建数据库表
 models.Base.metadata.create_all(bind=engine)
