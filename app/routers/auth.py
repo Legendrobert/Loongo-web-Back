@@ -90,16 +90,25 @@ async def register_user(user: schemas.UserCreate, db: Session = Depends(get_db))
     # 创建新用户
     new_user = crud.create_user(db=db, user=user)
     
+    # 创建访问令牌
+    access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token = create_access_token(
+        data={"sub": new_user.username},
+        expires_delta=access_token_expires
+    )
+    
     # 返回自定义格式的响应
     return {
+        "code": 200,
         "data": {
             "id": new_user.id,
             "username": new_user.username,
             "email": new_user.email,
-            "is_active": new_user.is_active,
-            "created_at": new_user.created_at
+            "is_active": new_user.is_active,        
+            "token": access_token
         },
-        "code": 200
+        "msg": "注册成功"
+
     }
 
 @router.post("/token", response_model=schemas.Token)
