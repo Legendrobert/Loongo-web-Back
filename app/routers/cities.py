@@ -5,6 +5,7 @@ from typing import List, Optional
 import crud, models, schemas
 from database import get_db
 from routers.auth import get_optional_current_user
+from utils.cities_utils import get_ai_city_details, get_bing_image_urls, get_popular_events_for_city, get_featured_restaurants_for_city, get_cozy_hotels_for_city, get_expert_opinions_for_city
 
 router = APIRouter(
     prefix="/cities",
@@ -127,6 +128,20 @@ async def get_city_detail(
         )
     
     city.recommended_cities = recommended_cities
+    
+    # 获取AI生成的城市详情信息
+    ai_details = get_ai_city_details(city.name)
+    city.suggested_visit_time = ai_details.get("suggested_visit_time", "")
+    city.activity_suggestions = ai_details.get("activity_suggestions", "")
+    city.site_description = ai_details.get("site_description", "")
+    
+    # 获取额外图片
+    city.additional_images = get_bing_image_urls(f"{city.name} city scenery", count=5)
+    
+    city.popular_events = get_popular_events_for_city(db, city_id)
+    city.featured_restaurants = get_featured_restaurants_for_city(db, city_id)
+    city.cozy_hotels = get_cozy_hotels_for_city(db, city_id)
+    city.expert_opinions = get_expert_opinions_for_city(db, city_id)
     
     return city
 
